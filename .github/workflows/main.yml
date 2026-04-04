@@ -62,8 +62,15 @@ jobs:
         docker push $IMAGE_NAME_LC:${GITHUB_SHA}
         docker push $IMAGE_NAME_LC:latest
 
+    #Checkout repo
+    - name: Checkout GitOps repo
+      uses: actions/checkout@v4
+      with:
+        repository: roshaan1103/aiops-gitops
+        token: ${{ secrets.GITOPS_TOKEN }}
+        path: gitops
+
     #Update Image tag
     - name: Update AI anomaly image tag
       run: |
-        cd gitops/environments/dev/aiops-app
-        sed -i "s|image: ghcr.io/roshaan1103/ai-anomaly-service:.*|image: ghcr.io/roshaan1103/ai-anomaly-service:${GITHUB_SHA}|g" ai-anomaly-deployment.yaml
+        sed -i "s|image: ghcr.io/roshaan1103/ai-anomaly-service:.*|image: ghcr.io/roshaan1103/ai-anomaly-service:${GITHUB_SHA}|g" gitops/environments/dev/aiops-app/ai-anomaly-deployment.yaml
