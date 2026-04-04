@@ -62,4 +62,8 @@ jobs:
         docker push $IMAGE_NAME_LC:${GITHUB_SHA}
         docker push $IMAGE_NAME_LC:latest
 
-   
+    #Update Image tag
+    - name: Update AI anomaly image tag
+      run: |
+       cd gitops
+       sed -i "s|image: ghcr.io/roshaan1103/ai-anomaly-service:.*|image: ghcr.io/roshaan1103/ai-anomaly-service:${GITHUB_SHA}|g" environments/dev/aiops-app/ai-anomaly-deployment.yaml
