@@ -62,12 +62,12 @@ jobs:
         docker push $IMAGE_NAME_LC:${GITHUB_SHA}
         docker push $IMAGE_NAME_LC:latest
 
-    #Checkout repo
+    # Checkout GitOps repo
     - name: Checkout GitOps repo
-      uses: actions/checkout@v4
+      uses: actions/checkout@v3
       with:
         repository: roshaan1103/aiops-gitops
-        token: ${{ secrets.GITOPS_TOKEN }}
+        token: ${{ secrets.GITOPS_PAT }}
         path: gitops
 
     #Update Image tag
