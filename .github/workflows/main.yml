@@ -62,11 +62,10 @@ jobs:
         docker push $IMAGE_NAME_LC:${GITHUB_SHA}
         docker push $IMAGE_NAME_LC:latest
 
-    # Security Scan (baseline DevSecOps)
     - name: Scan image with Trivy
-      uses: aquasecurity/trivy-action@0.24.0
+      uses: aquasecurity/trivy-action@0.20.0
       with:
         image-ref: ${{ env.IMAGE_NAME }}:${{ github.sha }}
         format: table
-        exit-code: 0   # don't fail yet (you can tighten later)
+        exit-code: 1
         severity: CRITICAL,HIGH
