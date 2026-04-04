@@ -1,59 +1,72 @@
-name: AI Anomaly Service CI/CD
+name: Build and Push AI Anomaly Service
 
 on:
   push:
-    branches:
-      - main
+    branches: [ "main" ]
+
+permissions:
+  contents: read
+  packages: write
 
 env:
   IMAGE_NAME: ghcr.io/roshaan1103/ai-anomaly-service
 
 jobs:
-  build-and-deploy:
+  build-and-push:
     runs-on: ubuntu-latest
 
     steps:
-      # 1. Checkout repo
-      - name: Checkout code
-        uses: actions/checkout@v3
+    - name: Checkout Code
+      uses: actions/checkout@v4
 
-      # 2. Convert repo name to lowercase (GHCR requirement)
-      - name: Set lowercase image name
-        run: echo "IMAGE_NAME_LC=${IMAGE_NAME,,}" >> $GITHUB_ENV
+    # Set lowercase image name (GHCR requires lowercase)
+    - name: Set lowercase image name
+      run: echo "IMAGE_NAME_LC=${IMAGE_NAME,,}" >> $GITHUB_ENV
 
-      # 3. Login to GHCR
-      - name: Login to GHCR
-        run: echo "${{ secrets.PAT_TOKEN }}" | docker login ghcr.io -u roshaan1103 --password-stdin
+    # Enable Docker Buildx (for caching)
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
 
-      # 4. Build Docker image
-      - name: Build Docker image
-        run: |
-          docker build -t $IMAGE_NAME_LC:${GITHUB_SHA} .
+    # Cache Docker layers (CRITICAL for speed)
+    - name: Cache Docker layers
+      uses: actions/cache@v4
+      with:
+        path: /tmp/.buildx-cache
+        key: ${{ runner.os }}-buildx-${{ github.sha }}
+        restore-keys: |
+          ${{ runner.os }}-buildx-
 
-      # 5. Push Docker image
-      - name: Push Docker image
-        run: |
-          docker push $IMAGE_NAME_LC:${GITHUB_SHA}
+    # ogin to GHCR
+    - name: Login to GitHub Container Registry
+      run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
-      # 6. Checkout GitOps repo
-      - name: Checkout GitOps repo
-        uses: actions/checkout@v3
-        with:
-          repository: roshaan1103/aiops-gitops
-          token: ${{ secrets.GITOPS_PAT }}
-          path: gitops
+    #Build image with cache
+    - name: Build Docker image
+      run: |
+        docker buildx build \
+          --cache-from type=local,src=/tmp/.buildx-cache \
+          --cache-to type=local,dest=/tmp/.buildx-cache-new \
+          -t $IMAGE_NAME_LC:${GITHUB_SHA} \
+          -t $IMAGE_NAME_LC:latest \
+          --load .
 
-      # 7. Update deployment YAML with new image
-      - name: Update deployment image
-        run: |
-          sed -i "s|image: .*ai-anomaly-service:.*|image: $IMAGE_NAME_LC:${GITHUB_SHA}|g" gitops/environments/dev/aiops-app/ai-anomaly-deployment.yaml
+    # Move cache (required trick)
+    - name: Move cache
+      run: |
+        rm -rf /tmp/.buildx-cache
+        mv /tmp/.buildx-cache-new /tmp/.buildx-cache
 
-      # 8. Commit & push changes
-      - name: Commit and push changes
-        run: |
-          cd gitops
-          git config user.name "github-actions"
-          git config user.email "github-actions@github.com"
-          git add environments/dev/aiops-app/ai-anomaly-deployment.yaml
-          git diff --cached --quiet || git commit -m "Update AI anomaly image to ${GITHUB_SHA}"
-          git push
+    #Push image
+    - name: Push Docker image
+      run: |
+        docker push $IMAGE_NAME_LC:${GITHUB_SHA}
+        docker push $IMAGE_NAME_LC:latest
+
+    # Security Scan (baseline DevSecOps)
+    - name: Scan image with Trivy
+      uses: aquasecurity/trivy-action@0.24.0
+      with:
+        image-ref: ${{ env.IMAGE_NAME }}:${{ github.sha }}
+        format: table
+        exit-code: 0   # don't fail yet (you can tighten later)
+        severity: CRITICAL,HIGH
