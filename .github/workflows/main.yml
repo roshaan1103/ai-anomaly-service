@@ -1,0 +1,63 @@
+name: AI Anomaly Service CI/CD
+
+on:
+  push:
+    branches:
+      - main
+
+env:
+  IMAGE_NAME: ghcr.io/roshaan1103/ai-anomaly-service
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. Checkout repo
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      # 2. Convert repo name to lowercase (GHCR requirement)
+      - name: Set lowercase image name
+        run: echo "IMAGE_NAME_LC=${IMAGE_NAME,,}" >> $GITHUB_ENV
+
+      # 3. Login to GHCR
+      - name: Log in to GHCR
+        uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # 4. Build Docker image
+      - name: Build Docker image
+        run: |
+          docker build -t $IMAGE_NAME_LC:${GITHUB_SHA} .
+
+      # 5. Push Docker image
+      - name: Push Docker image
+        run: |
+          docker push $IMAGE_NAME_LC:${GITHUB_SHA}
+
+      # 6. Checkout GitOps repo
+      - name: Checkout GitOps repo
+        uses: actions/checkout@v3
+        with:
+          repository: roshaan1103/aiops-gitops
+          token: ${{ secrets.GITOPS_PAT }}
+          path: gitops
+
+      # 7. Update deployment YAML with new image
+      - name: Update deployment image
+        run: |
+          sed -i "s|image: .*ai-anomaly-service:.*|image: $IMAGE_NAME_LC:${GITHUB_SHA}|g" gitops/environments/dev/aiops-app/ai-anomaly-deployment.yaml
+
+      # 8. Commit & push changes
+      - name: Commit and push changes
+        run: |
+          cd gitops
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git add environments/dev/aiops-app/ai-anomaly-deployment.yaml
+          git diff --cached --quiet || git commit -m "Update AI anomaly image to ${GITHUB_SHA}"
+          git push
