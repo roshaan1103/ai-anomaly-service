@@ -74,3 +74,12 @@ jobs:
     - name: Update AI anomaly image tag
       run: |
         sed -i "s|image: ghcr.io/roshaan1103/ai-anomaly-service:.*|image: ghcr.io/roshaan1103/ai-anomaly-service:${GITHUB_SHA}|g" gitops/environments/dev/aiops-app/ai-anomaly-deployment.yaml
+
+    - name: Commit and push changes
+      run: |
+        cd gitops
+        git config user.name "github-actions"
+        git config user.email "github-actions@github.com"
+        git add environments/dev/aiops-app/ai-anomaly-deployment.yaml
+        git diff --cached --quiet || git commit -m "Update AI anomaly image to ${{ github.sha }}"
+        git push
