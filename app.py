@@ -1,5 +1,4 @@
-from fastapi import FastAPI,Request
-import subprocess
+from fastapi import FastAPI
 import requests
 import numpy as np
 from sklearn.ensemble import IsolationForest
@@ -7,6 +6,7 @@ from prometheus_client import Gauge, generate_latest, CONTENT_TYPE_LATEST
 from fastapi.responses import Response
 import time
 import threading 
+from kubernetes import client, config
 
 app = FastAPI()
 
@@ -79,15 +79,18 @@ def metrics():
 
 
 @app.post("/alert")
-async def handle_alert(req: Request):
-    data = await req.json()
+async def handle_alert(alert: dict):
+    try:
+        config.load_incluster_config()
 
-    # naive logic (we improve later)
-    if "AIAnomalyDetected" in str(data):
-        # restart deployment
-        subprocess.run([
-            "kubectl", "rollout", "restart",
-            "deployment/aiops-app", "-n", "default"
-        ])
+        v1 = client.CoreV1Api()
 
-    return {"status": "action triggered"}
+        # Example: list pods (or delete, restart, etc.)
+        pods = v1.list_namespaced_pod(namespace="default")
+
+        print(f"Pods: {[pod.metadata.name for pod in pods.items]}")
+
+        return {"status": "handled via k8s API"}
+
+    except Exception as e:
+        return {"error": str(e)}

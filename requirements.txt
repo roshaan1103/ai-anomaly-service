@@ -4,4 +4,4 @@ scikit-learn
 numpy
 requests
 prometheus-client
-subprocess
+kubernetes
