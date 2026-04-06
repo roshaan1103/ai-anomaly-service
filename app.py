@@ -1,4 +1,5 @@
-from fastapi import FastAPI
+from fastapi import FastAPI,Request
+import subprocess
 import requests
 import numpy as np
 from sklearn.ensemble import IsolationForest
@@ -75,3 +76,18 @@ threading.Thread(target=background_job, daemon=True).start()
 @app.get("/metrics")
 def metrics():
     return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
+
+
+@app.post("/alert")
+async def handle_alert(req: Request):
+    data = await req.json()
+
+    # naive logic (we improve later)
+    if "AIAnomalyDetected" in str(data):
+        # restart deployment
+        subprocess.run([
+            "kubectl", "rollout", "restart",
+            "deployment/aiops-app", "-n", "default"
+        ])
+
+    return {"status": "action triggered"}
