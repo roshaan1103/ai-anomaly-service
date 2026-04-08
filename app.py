@@ -32,6 +32,29 @@ def fetch_cpu_metrics():
     return np.array(values).reshape(-1, 1)
 
 
+def get_anomaly_score():
+    try:
+        query = "aiops_anomaly_score"
+        response = requests.get(
+            f"{PROMETHEUS_URL}/api/v1/query",
+            params={"query": query}
+        )
+
+        data = response.json()
+
+        result = data["data"]["result"]
+
+        if not result:
+            return 0.0
+
+        value = float(result[0]["value"][1])
+        return value
+
+    except Exception as e:
+        print(f"Error fetching anomaly score: {e}")
+        return 0.0
+
+
 @app.get("/")
 def root():
     return {"message": "AIOps Anomaly Detection Service Running"}
@@ -82,57 +105,56 @@ def metrics():
 async def handle_alert(data: dict):
     try:
         config.load_incluster_config()
-
         apps_v1 = client.AppsV1Api()
 
-        alerts = data.get("alerts", [])
+        #GET REAL-TIME ANOMALY SCORE
+        anomaly_score = get_anomaly_score()
+        print(f"Anomaly Score: {anomaly_score}")
 
-        for alert in alerts:
-            labels = alert.get("labels", {})
-            alert_name = labels.get("alertname", "unknown")
+        #DECISION ENGINE (THIS IS THE CORE)
+        if anomaly_score > 0.8:
+            action = "restart"
+        elif anomaly_score > 0.5:
+            action = "scale"
+        else:
+            action = "ignore"
 
-            print(f"Received alert: {alert_name}")
+        print(f"Chosen action: {action}")
 
-            #  DECISION LOGIC
-            if "HighCPU" in alert_name:
-                action = "scale"
-            elif "Memory" in alert_name:
-                action = "restart"
-            else:
-                action = "log"
-
-            print(f"Decided action: {action}")
-
-            # ACTION EXECUTION
-            if action == "restart":
-                patch = {
-                    "spec": {
-                        "template": {
-                            "metadata": {
-                                "annotations": {
-                                    "kubectl.kubernetes.io/restartedAt": "now"
-                                }
+        # EXECUTION
+        if action == "restart":
+            patch = {
+                "spec": {
+                    "template": {
+                        "metadata": {
+                            "annotations": {
+                                "kubectl.kubernetes.io/restartedAt": "now"
                             }
                         }
                     }
                 }
+            }
 
-                apps_v1.patch_namespaced_deployment(
-                    name="aiops-app",
-                    namespace="default",
-                    body=patch
-                )
+            apps_v1.patch_namespaced_deployment(
+                name="aiops-app",
+                namespace="default",
+                body=patch
+            )
 
-            elif action == "scale":
-                body = {"spec": {"replicas": 3}}
+        elif action == "scale":
+            body = {"spec": {"replicas": 3}}
 
-                apps_v1.patch_namespaced_deployment_scale(
-                    name="aiops-app",
-                    namespace="default",
-                    body=body
-                )
+            apps_v1.patch_namespaced_deployment_scale(
+                name="aiops-app",
+                namespace="default",
+                body=body
+            )
 
-        return {"status": "action executed"}
+        return {
+            "status": "done",
+            "score": anomaly_score,
+            "action": action
+        }
 
     except Exception as e:
         return {"error": str(e)}
