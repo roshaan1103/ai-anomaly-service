@@ -79,18 +79,60 @@ def metrics():
 
 
 @app.post("/alert")
-async def handle_alert(alert: dict):
+async def handle_alert(data: dict):
     try:
         config.load_incluster_config()
 
-        v1 = client.CoreV1Api()
+        apps_v1 = client.AppsV1Api()
 
-        # Example: list pods (or delete, restart, etc.)
-        pods = v1.list_namespaced_pod(namespace="default")
+        alerts = data.get("alerts", [])
 
-        print(f"Pods: {[pod.metadata.name for pod in pods.items]}")
+        for alert in alerts:
+            labels = alert.get("labels", {})
+            alert_name = labels.get("alertname", "unknown")
 
-        return {"status": "handled via k8s API"}
+            print(f"Received alert: {alert_name}")
+
+            #  DECISION LOGIC
+            if "HighCPU" in alert_name:
+                action = "scale"
+            elif "Memory" in alert_name:
+                action = "restart"
+            else:
+                action = "log"
+
+            print(f"Decided action: {action}")
+
+            # ACTION EXECUTION
+            if action == "restart":
+                patch = {
+                    "spec": {
+                        "template": {
+                            "metadata": {
+                                "annotations": {
+                                    "kubectl.kubernetes.io/restartedAt": "now"
+                                }
+                            }
+                        }
+                    }
+                }
+
+                apps_v1.patch_namespaced_deployment(
+                    name="aiops-app",
+                    namespace="default",
+                    body=patch
+                )
+
+            elif action == "scale":
+                body = {"spec": {"replicas": 3}}
+
+                apps_v1.patch_namespaced_deployment_scale(
+                    name="aiops-app",
+                    namespace="default",
+                    body=body
+                )
+
+        return {"status": "action executed"}
 
     except Exception as e:
         return {"error": str(e)}
